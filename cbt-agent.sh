@@ -17,10 +17,10 @@ fi
 #ECR
 REGISTRY="cbt"
 REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
-REPOSITORY_NAME="ldap-agent"
+REPOSITORY_NAME="cbt-agent"
 # Get the latest version from the ECR repository
 LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
-echo "The latest version of the ldap-agent image is: $LATEST_VERSION"
+echo "The latest version of the cbt-agent image is: $LATEST_VERSION"
 
 # Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
 : ${LOG_DIR:="/var/log/cbt-ldap-agent"}
@@ -111,13 +111,13 @@ function check_docker() {
 function pull_image() {
   check_jq
   check_docker
-  # Check if any ldap-agent images exist
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
-    echo "The ldap-agent image exists."
+  # Check if any cbt-agent images exist
+  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q cbt-agent; then
+    echo "The cbt-agent image exists."
 
     # Check if the installed version is the latest
     INSTALLED_VERSION=$($CONTAINER_RUNTIME images --format "{{.Repository}}:{{.Tag}}" | grep $REPOSITORY_NAME | cut -d':' -f2)
-    echo "The installed version of the ldap-agent image is: $INSTALLED_VERSION"
+    echo "The installed version of the cbt-agent image is: $INSTALLED_VERSION"
 
     if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
       echo "The installed version is not the latest version. Would you like to update to the latest version? (y/n)"
@@ -125,10 +125,10 @@ function pull_image() {
       if [ "$answer" =~ ^[Yy]$ ]; then
         echo "Updating to the latest version..."
         # Stop any running containers
-        if $CONTAINER_RUNTIME ps -a | grep -q ldap-agent; then
+        if $CONTAINER_RUNTIME ps -a | grep -q cbt-agent; then
           echo "Stopping any running containers..."
-          $USE_SUDO $CONTAINER_RUNTIME stop ldap-agent
-          $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent > /dev/null 2>&1
+          $USE_SUDO $CONTAINER_RUNTIME stop cbt-agent
+          $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent > /dev/null 2>&1
         fi
 
         # Pull the latest version
@@ -141,7 +141,7 @@ function pull_image() {
     fi
 
   else
-    echo "The ldap-agent image does not exist. Pulling the latest version..."
+    echo "The cbt-agent image does not exist. Pulling the latest version..."
     $USE_SUDO $CONTAINER_RUNTIME pull $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION
   fi
 }
@@ -153,7 +153,7 @@ function service_configure_ldap() {
       echo "Deleting existing configuration and folders..."
       $USE_SUDO rm -rf "$LOG_DIR"
       $USE_SUDO rm -rf "$CONFIG_DIR"
-      $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-register > /dev/null 2>&1
+      $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent-register > /dev/null 2>&1
       echo "Recreating configuration and folders..."
       $USE_SUDO mkdir -p "$LOG_DIR"
       $USE_SUDO mkdir -p "$CONFIG_DIR"
@@ -168,13 +168,13 @@ function service_configure_ldap() {
   fi
 
   # Configure the service
-  echo "Configuring the ldap-agent service..."
+  echo "Configuring the cbt-agent service..."
 
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name ldap-agent-register \
+  $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent-register \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION ldap-agent-register 
+    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent-register 
 
 }
 
@@ -199,33 +199,33 @@ function service_configure_sql() {
   fi
 
   # Configure the service
-  echo "Configuring the ldap-agent-sql service..."
-  $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-register-sql >  /dev/null 2>&1
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name ldap-agent-register-sql \
+  echo "Configuring the cbt-agent-sql service..."
+  $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent-register-sql >  /dev/null 2>&1
+  $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent-register-sql \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION ldap-agent-register-sql 
+    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent-register-sql 
 }
 
 
 function service_cbt_run() {
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
-    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "ldap-agent"; then
+  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q cbt-agent; then
+    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "cbt-agent"; then
       read -p "The container is already exists. Would you like to restart it? (Y/N) " confirmation
       if [[ $confirmation =~ ^[Yy]$ ]]; then  
-        $USE_SUDO $CONTAINER_RUNTIME restart ldap-agent
+        $USE_SUDO $CONTAINER_RUNTIME restart cbt-agent
         echo "Agent restarted successfully."
       else
         echo "Skipping..."
       fi
       else
-        echo "The ldap-agent container not found. Starting"
-        $USE_SUDO $CONTAINER_RUNTIME run -it --name ldap-agent \
+        echo "The cbt-agent container not found. Starting"
+        $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent \
           -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
           -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
           -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-          $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION ldap-agent
+          $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent
       fi
   else
     echo "Image not found. Please, pull image first."
@@ -238,19 +238,19 @@ function service_options() {
   # Set the appropriate command based on the option chosen
   case "$option" in
     "start")
-      command="$USE_SUDO $CONTAINER_RUNTIME start ldap-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME start cbt-agent"
       ;;
     "stop")
-      command="$USE_SUDO $CONTAINER_RUNTIME stop ldap-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME stop cbt-agent"
       ;;
     "restart")
-      command="$USE_SUDO $CONTAINER_RUNTIME restart ldap-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME restart cbt-agent"
       ;;
     "status")
-      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=ldap-agent")
+      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=cbt-agent")
 
       # Check if the container is running
-      if [[ "$status" == *"ldap-agent"* ]]; then
+      if [[ "$status" == *"cbt-agent"* ]]; then
         echo "====The service is running.===="
       else
         echo "====The service is not running.===="
@@ -275,7 +275,7 @@ while true; do
   echo "==============="
   echo "Select an option:"
   echo "1 - Docker/image installation"
-  echo "2 - LDAP configuration (ldap-agent-register)"
+  echo "2 - LDAP configuration (ladp-agent-register)"
   echo "3 - SQL configuration (sql-agent-register)"
   echo "4 - Service execution (cbt-agent)"
   echo "5 - Service status"
