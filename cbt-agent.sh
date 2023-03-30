@@ -1,5 +1,4 @@
 #!/bin/bash
-
 CONTAINER_RUNTIME="docker"
 USE_SUDO=""
 
@@ -14,6 +13,21 @@ elif [[ "$(cat /etc/os-release | grep ID)" == *"debian"* ]]; then
   PACKAGE_MANAGER="apt-get"
 fi
 
+##Vars
+#ECR
+REGISTRY="cbt"
+REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
+REPOSITORY_NAME="ldap-agent"
+# Get the latest version from the ECR repository
+LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
+echo "The latest version of the ldap-agent image is: $LATEST_VERSION"
+
+# Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
+: ${LOG_DIR:="/var/log/cbt-ldap-agent"}
+: ${CONFIG_DIR:="/etc/cbt-ldap-agent"}
+: ${LOG_DIR_SQL:="/var/log/cbt-ldap-agent-sql"}
+: ${CONFIG_DIR_SQL:="/etc/cbt-ldap-agent-sql"}
+
 function check_sudo() {
     if [ $(id -u) -ne 0 ] && [ ! $(command -v sudo) ]; then
         echo "This script requires administrator privileges or the installation of the sudo package to function correctly."
@@ -25,18 +39,36 @@ function check_sudo() {
     fi
 
     if [ $(command -v sudo) ]; then
-        echo "This script requires administrator privileges to execute correctly. Please enter your sudo password if need to continue."
-        sudo ls $0 || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
+        echo "This script requires administrator privileges to execute correctly. Please enter your sudo password to continue."
+        sudo -v || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
     fi
 }
+
+
+function download_cbt() {
+    if [ ! -f "/usr/bin/cbt-installer" ]; then
+        echo "Downloading cbt-installer script..."
+        $USE_SUDO wget -q -O /usr/bin/cbt-installer https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh
+	$USE_SUDO chmod +x /usr/bin/cbt-installer
+        echo "cbt-installer script downloaded successfully!"
+    else
+        read -p "cbt-instaler already exists. Would you like to update it? (Y/N) " confirmation
+        if [[ $confirmation =~ ^[Yy]$ ]]; then
+                $USE_SUDO wget -q -O /usr/bin/cbt-installer https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh
+		$USE_SUDO chmod +x /usr/bin/cbt-installer
+                echo "cbt-installer updated."
+      else
+        echo "Skipping..."
+      fi
+    fi
+}
+
 
 function install_jq() {
   if [[ "$PACKAGE_MANAGER" == "zypper" ]]; then
     # Install jq
     $USE_SUDO $PACKAGE_MANAGER --non-interactive install jq
   else
-    #echo "Não é possível instalar o jq automaticamente neste sistema. Por favor, consulte a documentação do jq para obter instruções de instalação."
-    #exit 1
     curl -sSL -o /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64 && chmod +x /tmp/jq
     $USE_SUDO mv /tmp/jq /usr/bin/
   fi
@@ -76,37 +108,9 @@ function check_docker() {
   fi
 }
 
-function check_docker_is_running() {
-
-if ! $USE_SUDO pgrep docker >/dev/null; then
-  echo "Docker is not running, restarting it now..."
-  $USE_SUDO systemctl restart docker
-fi
-}
-
-check_sudo
-check_jq
-check_docker
-check_docker_is_running
-
-##Vars
-#ECR
-REGISTRY="cbt"
-REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
-REPOSITORY_NAME="ldap-agent"
-# Get the latest version from the ECR repository
-LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
-echo "The latest version of the ldap-agent image is: $LATEST_VERSION"
-
-# Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
-: ${LOG_DIR:="/var/log/cbt-ldap-agent"}
-: ${CONFIG_DIR:="/etc/cbt-ldap-agent"}
-: ${LOG_DIR_SQL:="/var/log/cbt-ldap-agent-sql"}
-: ${CONFIG_DIR_SQL:="/etc/cbt-ldap-agent-sql"}
-
-
 function pull_image() {
-
+  check_jq
+  check_docker
   # Check if any ldap-agent images exist
   if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
     echo "The ldap-agent image exists."
@@ -116,14 +120,15 @@ function pull_image() {
     echo "The installed version of the ldap-agent image is: $INSTALLED_VERSION"
 
     if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
-      read -p "The installed version is not the latest version. Would you like to update to the latest version? (Y/N)" answer
-      if [[ "$answer" =~ ^[Yy]$ ]]; then
+      echo "The installed version is not the latest version. Would you like to update to the latest version? (y/n)"
+      read answer
+      if [ "$answer" =~ ^[Yy]$ ]; then
         echo "Updating to the latest version..."
         # Stop any running containers
         if $CONTAINER_RUNTIME ps -a | grep -q ldap-agent; then
           echo "Stopping any running containers..."
-          $USE_SUDO $CONTAINER_RUNTIME stop ldap-agent-run
-          $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-run > /dev/null 2>&1
+          $USE_SUDO $CONTAINER_RUNTIME stop ldap-agent
+          $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent > /dev/null 2>&1
         fi
 
         # Pull the latest version
@@ -195,27 +200,28 @@ function service_configure_sql() {
 
   # Configure the service
   echo "Configuring the ldap-agent-sql service..."
-  $USE_SUDO $CONTAINER_RUNTIME rm -f sql-agent-register >  /dev/null 2>&1
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name sql-agent-register \
+  $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-register-sql >  /dev/null 2>&1
+  $USE_SUDO $CONTAINER_RUNTIME run -it --name ldap-agent-register-sql \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION sql-agent-register 
+    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION ldap-agent-register-sql 
 }
+
 
 function service_cbt_run() {
   if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
-    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "ldap-agent-run"; then
+    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "ldap-agent"; then
       read -p "The container is already exists. Would you like to restart it? (Y/N) " confirmation
       if [[ $confirmation =~ ^[Yy]$ ]]; then  
-        $USE_SUDO $CONTAINER_RUNTIME restart ldap-agent-run
+        $USE_SUDO $CONTAINER_RUNTIME restart ldap-agent
         echo "Agent restarted successfully."
       else
         echo "Skipping..."
       fi
       else
         echo "The ldap-agent container not found. Starting"
-        $USE_SUDO $CONTAINER_RUNTIME run -td --name ldap-agent-run \
+        $USE_SUDO $CONTAINER_RUNTIME run -it --name ldap-agent \
           -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
           -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
           -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
@@ -226,48 +232,25 @@ function service_cbt_run() {
   fi
 }
 
-function service_sql_run() {
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
-    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "sql-agent-run"; then
-      read -p "The container is already exists. Would you like to restart it? (Y/N) " confirmation
-      if [[ $confirmation =~ ^[Yy]$ ]]; then
-        $USE_SUDO $CONTAINER_RUNTIME restart sql-agent-run
-        echo "Agent restarted successfully."
-      else
-        echo "Skipping..."
-      fi
-      else
-        echo "The sql-agent container not found. Starting"
-        $USE_SUDO $CONTAINER_RUNTIME run -td --name sql-agent-run \
-          -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
-          -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
-          -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-          $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION sql-agent
-      fi
-  else
-    echo "Image not found. Please, pull image first."
-  fi
-}
-
 function service_options() {
   local option=$1
-  command=""
+
   # Set the appropriate command based on the option chosen
   case "$option" in
     "start")
-      command="$USE_SUDO $CONTAINER_RUNTIME start ldap-agent-run"
+      command="$USE_SUDO $CONTAINER_RUNTIME start ldap-agent"
       ;;
     "stop")
-      command="$USE_SUDO $CONTAINER_RUNTIME stop ldap-agent-run"
+      command="$USE_SUDO $CONTAINER_RUNTIME stop ldap-agent"
       ;;
     "restart")
-      command="$USE_SUDO $CONTAINER_RUNTIME restart ldap-agent-run"
+      command="$USE_SUDO $CONTAINER_RUNTIME restart ldap-agent"
       ;;
     "status")
-      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=ldap-agent-run")
+      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=ldap-agent")
 
       # Check if the container is running
-      if [[ "$status" == *"ldap-agent-run"* ]]; then
+      if [[ "$status" == *"ldap-agent"* ]]; then
         echo "====The service is running.===="
       else
         echo "====The service is not running.===="
@@ -281,48 +264,24 @@ function service_options() {
   esac
 
   # Run the command and print the output
-  #echo "Running command: $command"
+  echo "Running command: $command"
   eval "$command"
 }
 
-function uninstall_service() {
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q ldap-agent; then
-    read -p "Uninstall cbt-agent? (Y/N) " confirmation
-    if [[ $confirmation =~ ^[Yy]$ ]]; then
-      $USE_SUDO $CONTAINER_RUNTIME stop ldap-agent-run > /dev/null 2>&1
-      $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-register > /dev/null 2>&1
-      $USE_SUDO $CONTAINER_RUNTIME rm -f ldap-agent-run > /dev/null 2>&1
-      $USE_SUDO rm -rf "$LOG_DIR" > /dev/null 2>&1
-      $USE_SUDO rm -rf "$CONFIG_DIR" > /dev/null 2>&1
-      images=$($USE_SUDO $CONTAINER_RUNTIME images | grep ldap-agent | awk '{print $3}')
-      # Delete each image found
-      for image in $images
-        do
-          $USE_SUDO $CONTAINER_RUNTIME rmi -f $image > /dev/null 2>&1
-        done
-      echo "Done."
-    else
-      echo "Skipping..."
-    fi
-  else
-    echo "cbt-agent not installed. Skipping..."
-  fi
-}
 
-
+check_sudo
+download_cbt
 while true; do
   echo "==============="
   echo "Select an option:"
   echo "1 - Docker/image installation"
   echo "2 - LDAP configuration (ldap-agent-register)"
   echo "3 - SQL configuration (sql-agent-register)"
-  echo "4 - Service start (cbt-agent)"
-  echo "5 - Service stop (cbt-agent)"
-  echo "6 - Service restart (cbt-agent)"
-  echo "7 - Service status (cbt-agent)"
-  echo "8 - Uninstall service"
-  echo "9 - Exit"
-  read -p "Choose an option (1/2/3/4/5/6/7/8/9): " option
+  echo "4 - Service execution (cbt-agent)"
+  echo "5 - Service status"
+  echo "6 - Uninstall service"
+  echo "7 - Exit"
+  read -p "Choose an option (1/2/3/4/5/6/7): " option
 
   case "$option" in
     1)
@@ -339,27 +298,54 @@ while true; do
       ;;
     4)
       clear
-      service_cbt_run "start"
+      service_cbt_run
       ;;
     5)
-      clear
-      service_options "stop"
+      while true; do
+        echo "==============="
+        echo "Service status:"
+        echo "1 - Start"
+        echo "2 - Stop"
+        echo "3 - Restart"
+        echo "4 - Status"
+        echo "5 - Back to main menu"
+        read -p "Choose an option (1/2/3/4/5): " status_option
+
+        case "$status_option" in
+          1)
+            clear
+            service_options "start"
+            ;;
+          2)
+            clear
+            service_options "stop"
+            ;;
+          3)
+            clear
+            service_options "restart"
+            ;;
+          4)
+            clear
+            service_options "status"
+            ;;
+          5)
+            break
+            ;;
+          *)
+            echo "Invalid option, please choose a valid option."
+            ;;
+        esac
+      done
       ;;
     6)
       clear
-      service_options "restart"
-      ;;
-   7)
-      clear
-      service_options "status"
-      ;;
-   8)
-      clear
       uninstall_service
       ;;
-   9)
+    7)
       exit 0
       ;;
-    5)
+    *)
+      echo "Invalid option, please choose a valid option."
+      ;;
   esac
 done
