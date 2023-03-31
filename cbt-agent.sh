@@ -237,19 +237,27 @@ function service_cbt_run() {
   fi
 }
 
+function run_service_command() {
+  local command="$USE_SUDO $CONTAINER_RUNTIME $1 $AGENT_CONTAINER_NAME"
+
+  # Run the command and print the output
+  echo "Running command: $command"
+  eval "$command"
+}
+
 function service_options() {
   local option=$1
 
   # Set the appropriate command based on the option chosen
   case "$option" in
     "start")
-      command="$USE_SUDO $CONTAINER_RUNTIME start $AGENT_CONTAINER_NAME"
+      run_service_command "start"
       ;;
     "stop")
-      command="$USE_SUDO $CONTAINER_RUNTIME stop $AGENT_CONTAINER_NAME"
+      run_service_command "stop"
       ;;
     "restart")
-      command="$USE_SUDO $CONTAINER_RUNTIME restart $AGENT_CONTAINER_NAME"
+      run_service_command "restart"
       ;;
     "status")
       status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=$AGENT_CONTAINER_NAME")
@@ -267,10 +275,6 @@ function service_options() {
       return 1
       ;;
   esac
-
-  # Run the command and print the output
-  echo "Running command: $command"
-  eval "$command"
 }
 
 check_sudo
