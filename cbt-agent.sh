@@ -27,9 +27,11 @@ SQL_REGISTER_CONTAINER_NAME="sql-register"
 SQL_REGISTER_CMD="sql-agent-register"
 SCRIPT_INSTALLER_URL="https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh"
 SCRIPT_NAME="cbt-agent"
-# Get the latest version from the ECR repository
-LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
-echo "The latest version of the $IMAGE_NAME image is: $LATEST_VERSION"
+
+if [ $(command -v jq) ]; then
+  # Get the latest version from the ECR repository
+  LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
+fi
 
 # Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
 : ${LOG_DIR:="/var/log/cbt-ldap-agent"}
@@ -118,6 +120,11 @@ function check_docker() {
 function pull_image() {
   check_jq
   check_docker
+
+  if [ -z "$LATEST_VERSION" ]; then
+    LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
+  fi
+
   # Check if image exist
   if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q $IMAGE_NAME; then
     echo "The $IMAGE_NAME image exists."
