@@ -17,10 +17,19 @@ fi
 #ECR
 REGISTRY="cbt"
 REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
-REPOSITORY_NAME="cbt-agent"
+REPOSITORY_NAME="ldap-agent"
+IMAGE_NAME="ldap-agent"
+AGENT_CONTAINER_NAME="cbt-agent"
+AGENT_CMD="ldap-agent"
+LDAP_REGISTER_CONTAINER_NAME="ldap-register"
+LDAP_REGISTER_CMD="ldap-agent-register"
+SQL_REGISTER_CONTAINER_NAME="sql-register"
+SQL_REGISTER_CMD="sql-agent-register"
+SCRIPT_INSTALLER_URL="https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh"
+SCRIPT_NAME="cbt-agent"
 # Get the latest version from the ECR repository
 LATEST_VERSION=$(curl --silent 'https://api.us-east-1.gallery.ecr.aws/describeImageTags' --data-raw '{"registryAliasName":"'${REGISTRY}'","repositoryName":"'${REPOSITORY_NAME}'"}' --compressed | jq -r '.imageTagDetails[0].imageTag')
-echo "The latest version of the cbt-agent image is: $LATEST_VERSION"
+echo "The latest version of the $IMAGE_NAME image is: $LATEST_VERSION"
 
 # Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
 : ${LOG_DIR:="/var/log/cbt-ldap-agent"}
@@ -29,40 +38,38 @@ echo "The latest version of the cbt-agent image is: $LATEST_VERSION"
 : ${CONFIG_DIR_SQL:="/etc/cbt-ldap-agent-sql"}
 
 function check_sudo() {
-    if [ $(id -u) -ne 0 ] && [ ! $(command -v sudo) ]; then
-        echo "This script requires administrator privileges or the installation of the sudo package to function correctly."
-        exit 1
-    else
-        if [ $(command -v sudo) ]; then
-            USE_SUDO="sudo"
-        fi
-    fi
-
+  if [ $(id -u) -ne 0 ] && [ ! $(command -v sudo) ]; then
+    echo "This script requires administrator privileges or the installation of the sudo package to function correctly."
+    exit 1
+  else
     if [ $(command -v sudo) ]; then
-        echo "This script requires administrator privileges to execute correctly. Please enter your sudo password to continue."
-        sudo -v || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
+      USE_SUDO="sudo"
     fi
-}
+  fi
 
+  if [ $(command -v sudo) ]; then
+    echo "This script requires administrator privileges to execute correctly. Please enter your sudo password to continue."
+    sudo -v || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
+  fi
+}
 
 function download_cbt() {
-    if [ ! -f "/usr/bin/cbt-installer" ]; then
-        echo "Downloading cbt-installer script..."
-        $USE_SUDO wget -q -O /usr/bin/cbt-installer https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh
-	$USE_SUDO chmod +x /usr/bin/cbt-installer
-        echo "cbt-installer script downloaded successfully!"
+  if [ ! -f "/usr/bin/$SCRIPT_NAME" ]; then
+    echo "Downloading $SCRIPT_NAME script..."
+    $USE_SUDO wget -q -O /usr/bin/$SCRIPT_NAME $SCRIPT_INSTALLER_URL
+    $USE_SUDO chmod +x /usr/bin/$SCRIPT_NAME
+    echo "$SCRIPT_NAME script downloaded successfully!"
+  else
+    read -p "$SCRIPT_NAME already exists. Would you like to update it? (Y/N) " confirmation
+    if [[ $confirmation =~ ^[Yy]$ ]]; then
+      $USE_SUDO wget -q -O /usr/bin/$SCRIPT_NAME $SCRIPT_INSTALLER_URL
+      $USE_SUDO chmod +x /usr/bin/$SCRIPT_NAME
+      echo "$SCRIPT_NAME updated."
     else
-        read -p "cbt-instaler already exists. Would you like to update it? (Y/N) " confirmation
-        if [[ $confirmation =~ ^[Yy]$ ]]; then
-                $USE_SUDO wget -q -O /usr/bin/cbt-installer https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh
-		$USE_SUDO chmod +x /usr/bin/cbt-installer
-                echo "cbt-installer updated."
-      else
-        echo "Skipping..."
-      fi
+      echo "Skipping..."
     fi
+  fi
 }
-
 
 function install_jq() {
   if [[ "$PACKAGE_MANAGER" == "zypper" ]]; then
@@ -76,7 +83,7 @@ function install_jq() {
 
 function install_docker() {
   if [[ "$PACKAGE_MANAGER" == "zypper" ]]; then
-    $USE_SUDO $PACKAGE_MANAGER --non-interactive install docker 
+    $USE_SUDO $PACKAGE_MANAGER --non-interactive install docker
     # Add the current user to the 'docker' group so that it can run Docker commands without 'sudo' and start
     #$USE_SUDO usermod -aG docker $(whoami)
     sleep 5
@@ -111,13 +118,13 @@ function check_docker() {
 function pull_image() {
   check_jq
   check_docker
-  # Check if any cbt-agent images exist
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q cbt-agent; then
-    echo "The cbt-agent image exists."
+  # Check if image exist
+  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q $IMAGE_NAME; then
+    echo "The $IMAGE_NAME image exists."
 
     # Check if the installed version is the latest
     INSTALLED_VERSION=$($CONTAINER_RUNTIME images --format "{{.Repository}}:{{.Tag}}" | grep $REPOSITORY_NAME | cut -d':' -f2)
-    echo "The installed version of the cbt-agent image is: $INSTALLED_VERSION"
+    echo "The installed version of the $IMAGE_NAME image is: $INSTALLED_VERSION"
 
     if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
       echo "The installed version is not the latest version. Would you like to update to the latest version? (y/n)"
@@ -125,10 +132,10 @@ function pull_image() {
       if [ "$answer" =~ ^[Yy]$ ]; then
         echo "Updating to the latest version..."
         # Stop any running containers
-        if $CONTAINER_RUNTIME ps -a | grep -q cbt-agent; then
+        if $CONTAINER_RUNTIME ps -a | grep -q $AGENT_CONTAINER_NAME; then
           echo "Stopping any running containers..."
-          $USE_SUDO $CONTAINER_RUNTIME stop cbt-agent
-          $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent > /dev/null 2>&1
+          $USE_SUDO $CONTAINER_RUNTIME stop $AGENT_CONTAINER_NAME
+          $USE_SUDO $CONTAINER_RUNTIME rm -f $AGENT_CONTAINER_NAME > /dev/null 2>&1
         fi
 
         # Pull the latest version
@@ -141,7 +148,7 @@ function pull_image() {
     fi
 
   else
-    echo "The cbt-agent image does not exist. Pulling the latest version..."
+    echo "The $IMAGE_NAME image does not exist. Pulling the latest version..."
     $USE_SUDO $CONTAINER_RUNTIME pull $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION
   fi
 }
@@ -153,7 +160,7 @@ function service_configure_ldap() {
       echo "Deleting existing configuration and folders..."
       $USE_SUDO rm -rf "$LOG_DIR"
       $USE_SUDO rm -rf "$CONFIG_DIR"
-      $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent-register > /dev/null 2>&1
+      $USE_SUDO $CONTAINER_RUNTIME rm -f $LDAP_REGISTER_CONTAINER_NAME > /dev/null 2>&1
       echo "Recreating configuration and folders..."
       $USE_SUDO mkdir -p "$LOG_DIR"
       $USE_SUDO mkdir -p "$CONFIG_DIR"
@@ -168,14 +175,13 @@ function service_configure_ldap() {
   fi
 
   # Configure the service
-  echo "Configuring the cbt-agent service..."
+  echo "Configuring the $LDAP_REGISTER_CMD service..."
 
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent-register \
+  $USE_SUDO $CONTAINER_RUNTIME run -it --name $LDAP_REGISTER_CONTAINER_NAME \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent-register 
-
+    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION $LDAP_REGISTER_CMD
 }
 
 function service_configure_sql() {
@@ -199,34 +205,33 @@ function service_configure_sql() {
   fi
 
   # Configure the service
-  echo "Configuring the cbt-agent-sql service..."
-  $USE_SUDO $CONTAINER_RUNTIME rm -f cbt-agent-register-sql >  /dev/null 2>&1
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent-register-sql \
+  echo "Configuring the $SQL_REGISTER_CMD service..."
+  $USE_SUDO $CONTAINER_RUNTIME rm -f $SQL_REGISTER_CONTAINER_NAME >  /dev/null 2>&1
+  $USE_SUDO $CONTAINER_RUNTIME run -it --name $SQL_REGISTER_CONTAINER_NAME \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent-register-sql 
+    $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION $SQL_REGISTER_CMD
 }
 
-
 function service_cbt_run() {
-  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q cbt-agent; then
-    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q "cbt-agent"; then
-      read -p "The container is already exists. Would you like to restart it? (Y/N) " confirmation
-      if [[ $confirmation =~ ^[Yy]$ ]]; then  
-        $USE_SUDO $CONTAINER_RUNTIME restart cbt-agent
+  if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q $IMAGE_NAME; then
+    if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q $AGENT_CONTAINER_NAME; then
+      read -p "The container already exists. Would you like to restart it? (Y/N) " confirmation
+      if [[ $confirmation =~ ^[Yy]$ ]]; then
+        $USE_SUDO $CONTAINER_RUNTIME restart $AGENT_CONTAINER_NAME
         echo "Agent restarted successfully."
       else
         echo "Skipping..."
       fi
-      else
-        echo "The cbt-agent container not found. Starting"
-        $USE_SUDO $CONTAINER_RUNTIME run -it --name cbt-agent \
-          -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
-          -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
-          -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
-          $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION cbt-agent
-      fi
+    else
+      echo "$AGENT_CONTAINER_NAME container not found. Starting"
+      $USE_SUDO $CONTAINER_RUNTIME run -it --name $AGENT_CONTAINER_NAME \
+        -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
+        -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
+        -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
+        $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME:$LATEST_VERSION $AGENT_CMD
+    fi
   else
     echo "Image not found. Please, pull image first."
   fi
@@ -238,19 +243,19 @@ function service_options() {
   # Set the appropriate command based on the option chosen
   case "$option" in
     "start")
-      command="$USE_SUDO $CONTAINER_RUNTIME start cbt-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME start $AGENT_CONTAINER_NAME"
       ;;
     "stop")
-      command="$USE_SUDO $CONTAINER_RUNTIME stop cbt-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME stop $AGENT_CONTAINER_NAME"
       ;;
     "restart")
-      command="$USE_SUDO $CONTAINER_RUNTIME restart cbt-agent"
+      command="$USE_SUDO $CONTAINER_RUNTIME restart $AGENT_CONTAINER_NAME"
       ;;
     "status")
-      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=cbt-agent")
+      status=$(eval "$USE_SUDO $CONTAINER_RUNTIME ps -f name=$AGENT_CONTAINER_NAME")
 
       # Check if the container is running
-      if [[ "$status" == *"cbt-agent"* ]]; then
+      if [[ "$status" == *"$AGENT_CONTAINER_NAME"* ]]; then
         echo "====The service is running.===="
       else
         echo "====The service is not running.===="
@@ -268,17 +273,16 @@ function service_options() {
   eval "$command"
 }
 
-
 check_sudo
 download_cbt
 while true; do
   echo "==============="
   echo "Select an option:"
   echo "1 - Docker/image installation"
-  echo "2 - LDAP configuration (ladp-agent-register)"
-  echo "3 - SQL configuration (sql-agent-register)"
-  echo "4 - Service execution (cbt-agent)"
-  echo "5 - Service status"
+  echo "2 - LDAP configuration ($LDAP_REGISTER_CMD)"
+  echo "3 - SQL configuration ($SQL_REGISTER_CMD)"
+  echo "4 - Service execution ($AGENT_CMD)"
+  echo "5 - Service management"
   echo "6 - Uninstall service"
   echo "7 - Exit"
   read -p "Choose an option (1/2/3/4/5/6/7): " option
@@ -303,7 +307,7 @@ while true; do
     5)
       while true; do
         echo "==============="
-        echo "Service status:"
+        echo "Service management:"
         echo "1 - Start"
         echo "2 - Stop"
         echo "3 - Restart"
