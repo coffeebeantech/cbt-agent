@@ -283,9 +283,8 @@ while true; do
   echo "3 - SQL configuration ($SQL_REGISTER_CMD)"
   echo "4 - Service execution ($AGENT_CMD)"
   echo "5 - Service management"
-  echo "6 - Uninstall service"
-  echo "7 - Exit"
-  read -p "Choose an option (1/2/3/4/5/6/7): " option
+  echo "6 - Exit"
+  read -p "Choose an option (1/2/3/4/5/6): " option
 
   case "$option" in
     1)
@@ -342,10 +341,6 @@ while true; do
       done
       ;;
     6)
-      clear
-      uninstall_service
-      ;;
-    7)
       exit 0
       ;;
     *)
