@@ -40,18 +40,15 @@ fi
 : ${CONFIG_DIR_SQL:="/etc/cbt-ldap-agent-sql"}
 
 function check_sudo() {
-  if [ $(id -u) -ne 0 ] && [ ! $(command -v sudo) ]; then
-    echo "This script requires administrator privileges or the installation of the sudo package to function correctly."
-    exit 1
-  else
+  if [ $(id -u) -ne 0 ]; then
     if [ $(command -v sudo) ]; then
       USE_SUDO="sudo"
+      echo "This script requires administrator privileges to execute correctly. Please enter your sudo password to continue."
+      sudo -v || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
+    else
+      echo "This script requires administrator privileges or the installation of the sudo package to function correctly."
+      exit 1
     fi
-  fi
-
-  if [ $(command -v sudo) ]; then
-    echo "This script requires administrator privileges to execute correctly. Please enter your sudo password to continue."
-    sudo -v || { echo "sudo authentication failed. Please check your credentials and try again." ; exit 1; }
   fi
 }
 
