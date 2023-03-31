@@ -80,26 +80,25 @@ function install_jq() {
   fi
 }
 
+function restart_docker() {
+  $USE_SUDO systemctl restart docker
+  sleep 5
+}
+
 function install_docker() {
+  # Add the current user to the 'docker' group so that it can run Docker commands without 'sudo' and start
+  #$USE_SUDO usermod -aG docker $(whoami)
   if [[ "$PACKAGE_MANAGER" == "zypper" ]]; then
     $USE_SUDO $PACKAGE_MANAGER --non-interactive install docker
-    # Add the current user to the 'docker' group so that it can run Docker commands without 'sudo' and start
-    #$USE_SUDO usermod -aG docker $(whoami)
-    sleep 5
-    $USE_SUDO systemctl restart docker
-    sleep 5
-    echo "Docker installed successfully"
   else
     curl -fsSL https://get.docker.com | sudo bash -
-    # Add the current user to the 'docker' group so that it can run Docker commands without 'sudo' and start
-    #$USE_SUDO  usermod -aG docker $(whoami)
-    sleep 5
-    $USE_SUDO systemctl restart docker
-    sleep 5
-    echo "Docker installed successfully"
-    #echo "Unable to automatically install Docker on this system. Please refer to the Docker documentation for installation instructions."
-    #exit 1
   fi
+
+  sleep 5
+  restart_docker
+  echo "Docker installed successfully"
+  #echo "Unable to automatically install Docker on this system. Please refer to the Docker documentation for installation instructions."
+  #exit 1
 }
 
 function check_jq() {
@@ -111,6 +110,8 @@ function check_jq() {
 function check_docker() {
   if ! [ -x "$(command -v $CONTAINER_RUNTIME)" ]; then
     install_docker
+  else
+    restart_docker
   fi
 }
 
