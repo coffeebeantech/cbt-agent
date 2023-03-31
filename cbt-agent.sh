@@ -281,78 +281,82 @@ function service_options() {
   esac
 }
 
+function menu() {
+  while true; do
+    echo "==============="
+    echo "Select an option:"
+    echo "1 - Docker/image installation"
+    echo "2 - LDAP configuration ($LDAP_REGISTER_CMD)"
+    echo "3 - SQL configuration ($SQL_REGISTER_CMD)"
+    echo "4 - Service execution ($AGENT_CMD)"
+    echo "5 - Service management"
+    echo "6 - Exit"
+    read -p "Choose an option (1/2/3/4/5/6): " option
+
+    case "$option" in
+      1)
+        clear
+        pull_image
+        ;;
+      2)
+        clear
+        service_configure_ldap
+        ;;
+      3)
+        clear
+        service_configure_sql
+        ;;
+      4)
+        clear
+        service_cbt_run
+        ;;
+      5)
+        while true; do
+          echo "==============="
+          echo "Service management:"
+          echo "1 - Start"
+          echo "2 - Stop"
+          echo "3 - Restart"
+          echo "4 - Status"
+          echo "5 - Back to main menu"
+          read -p "Choose an option (1/2/3/4/5): " status_option
+
+          case "$status_option" in
+            1)
+              clear
+              service_options "start"
+              ;;
+            2)
+              clear
+              service_options "stop"
+              ;;
+            3)
+              clear
+              service_options "restart"
+              ;;
+            4)
+              clear
+              service_options "status"
+              ;;
+            5)
+              break
+              ;;
+            *)
+              echo "Invalid option, please choose a valid option."
+              ;;
+          esac
+        done
+        ;;
+      6)
+        exit 0
+        ;;
+      *)
+        echo "Invalid option, please choose a valid option."
+        ;;
+    esac
+  done
+}
+
 check_sudo
 download_cbt
-while true; do
-  echo "==============="
-  echo "Select an option:"
-  echo "1 - Docker/image installation"
-  echo "2 - LDAP configuration ($LDAP_REGISTER_CMD)"
-  echo "3 - SQL configuration ($SQL_REGISTER_CMD)"
-  echo "4 - Service execution ($AGENT_CMD)"
-  echo "5 - Service management"
-  echo "6 - Exit"
-  read -p "Choose an option (1/2/3/4/5/6): " option
-
-  case "$option" in
-    1)
-      clear
-      pull_image
-      ;;
-    2)
-      clear
-      service_configure_ldap
-      ;;
-    3)
-      clear
-      service_configure_sql
-      ;;
-    4)
-      clear
-      service_cbt_run
-      ;;
-    5)
-      while true; do
-        echo "==============="
-        echo "Service management:"
-        echo "1 - Start"
-        echo "2 - Stop"
-        echo "3 - Restart"
-        echo "4 - Status"
-        echo "5 - Back to main menu"
-        read -p "Choose an option (1/2/3/4/5): " status_option
-
-        case "$status_option" in
-          1)
-            clear
-            service_options "start"
-            ;;
-          2)
-            clear
-            service_options "stop"
-            ;;
-          3)
-            clear
-            service_options "restart"
-            ;;
-          4)
-            clear
-            service_options "status"
-            ;;
-          5)
-            break
-            ;;
-          *)
-            echo "Invalid option, please choose a valid option."
-            ;;
-        esac
-      done
-      ;;
-    6)
-      exit 0
-      ;;
-    *)
-      echo "Invalid option, please choose a valid option."
-      ;;
-  esac
-done
+menu
