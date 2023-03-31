@@ -59,7 +59,7 @@ function download_cbt() {
     $USE_SUDO chmod +x /usr/bin/$SCRIPT_NAME
     echo "$SCRIPT_NAME script downloaded successfully!"
   else
-    read -p "$SCRIPT_NAME already exists. Would you like to update it? (Y/N) " confirmation
+    read -p "$SCRIPT_NAME already exists. Would you like to update it? (Y/N) " confirmation < /dev/tty
     if [[ $confirmation =~ ^[Yy]$ ]]; then
       $USE_SUDO wget -q -O /usr/bin/$SCRIPT_NAME $SCRIPT_INSTALLER_URL
       $USE_SUDO chmod +x /usr/bin/$SCRIPT_NAME
@@ -132,7 +132,7 @@ function pull_image() {
 
     if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
       echo "The installed version is not the latest version. Would you like to update to the latest version? (y/n)"
-      read answer
+      read answer < /dev/tty
       if [ "$answer" =~ ^[Yy]$ ]; then
         echo "Updating to the latest version..."
         # Stop any running containers
@@ -159,7 +159,7 @@ function pull_image() {
 
 function service_configure_ldap() {
   if [[ -d "$LOG_DIR" ]] || [[ -d "$CONFIG_DIR" ]]; then
-    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation
+    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation < /dev/tty
     if [[ $delete_confirmation =~ ^[Yy]$ ]]; then
       echo "Deleting existing configuration and folders..."
       $USE_SUDO rm -rf "$LOG_DIR"
@@ -190,7 +190,7 @@ function service_configure_ldap() {
 
 function service_configure_sql() {
   if [[ -d "$LOG_DIR_SQL" ]] || [[ -d "$CONFIG_DIR_SQL" ]]; then
-    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation
+    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation < /dev/tty
     if [[ $delete_confirmation =~ ^[Yy]$ ]]; then
       echo "Deleting existing configuration and folders..."
       $USE_SUDO rm -rf "$LOG_DIR_SQL"
@@ -221,7 +221,7 @@ function service_configure_sql() {
 function service_cbt_run() {
   if $CONTAINER_RUNTIME images $REGISTRY_ALIAS_NAME/$REPOSITORY_NAME | grep -q $IMAGE_NAME; then
     if $USE_SUDO $CONTAINER_RUNTIME ps -a | grep -q $AGENT_CONTAINER_NAME; then
-      read -p "The container already exists. Would you like to restart it? (Y/N) " confirmation
+      read -p "The container already exists. Would you like to restart it? (Y/N) " confirmation < /dev/tty
       if [[ $confirmation =~ ^[Yy]$ ]]; then
         $USE_SUDO $CONTAINER_RUNTIME restart $AGENT_CONTAINER_NAME
         echo "Agent restarted successfully."
@@ -291,7 +291,7 @@ function menu() {
     echo "4 - Service execution ($AGENT_CMD)"
     echo "5 - Service management"
     echo "6 - Exit"
-    read -p "Choose an option (1/2/3/4/5/6): " option
+    read -p "Choose an option (1/2/3/4/5/6): " option < /dev/tty
 
     case "$option" in
       1)
@@ -319,7 +319,7 @@ function menu() {
           echo "3 - Restart"
           echo "4 - Status"
           echo "5 - Back to main menu"
-          read -p "Choose an option (1/2/3/4/5): " status_option
+          read -p "Choose an option (1/2/3/4/5): " status_option < /dev/tty
 
           case "$status_option" in
             1)
