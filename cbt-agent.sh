@@ -275,6 +275,9 @@ function service_options() {
         return 1
       fi
       ;;
+    "logs")
+      less +F $LOG_DIR/agent.log
+      ;;
     *)
       echo "Invalid option, please choose a valid option."
       return 1
@@ -319,8 +322,9 @@ function menu() {
           echo "2 - Stop"
           echo "3 - Restart"
           echo "4 - Status"
-          echo "5 - Back to main menu"
-          read -p "Choose an option (1/2/3/4/5): " status_option < /dev/tty
+          echo "5 - Logs"
+          echo "6 - Back to main menu"
+          read -p "Choose an option (1/2/3/4/5/6): " status_option < /dev/tty
 
           case "$status_option" in
             1)
@@ -340,6 +344,10 @@ function menu() {
               service_options "status"
               ;;
             5)
+              clear
+              service_options "logs"
+              ;;
+            6)
               break
               ;;
             *)
