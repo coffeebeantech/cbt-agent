@@ -19,11 +19,11 @@ REGISTRY="cbt"
 REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
 REPOSITORY_NAME="cbt-agent"
 IMAGE_NAME="cbt-agent"
-AGENT_CONTAINER_NAME="cbt-agent"
+AGENT_CONTAINER_NAME="cbt-agent-container"
 AGENT_CMD="ldap-agent"
-LDAP_REGISTER_CONTAINER_NAME="ldap-register"
+LDAP_REGISTER_CONTAINER_NAME="ldap-register-container"
 LDAP_REGISTER_CMD="ldap-agent-register"
-SQL_REGISTER_CONTAINER_NAME="sql-register"
+SQL_REGISTER_CONTAINER_NAME="sql-register-container"
 SQL_REGISTER_CMD="sql-agent-register"
 SCRIPT_INSTALLER_URL="https://raw.githubusercontent.com/coffeebeantech/cbt-agent-installer/master/cbt-agent.sh"
 SCRIPT_NAME="cbt-agent"
@@ -36,8 +36,6 @@ fi
 # Define the environment variables LOG_DIR and CONFIG_DIR if they do not exist
 : ${LOG_DIR:="/var/log/cbt-ldap-agent"}
 : ${CONFIG_DIR:="/etc/cbt-ldap-agent"}
-: ${LOG_DIR_SQL:="/var/log/cbt-ldap-agent-sql"}
-: ${CONFIG_DIR_SQL:="/etc/cbt-ldap-agent-sql"}
 
 function check_sudo() {
   if [ $(id -u) -ne 0 ]; then
@@ -158,31 +156,20 @@ function pull_image() {
   fi
 }
 
-function service_configure_ldap() {
-  if [[ -d "$LOG_DIR" ]] || [[ -d "$CONFIG_DIR" ]]; then
-    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation < /dev/tty
-    if [[ $delete_confirmation =~ ^[Yy]$ ]]; then
-      echo "Deleting existing configuration and folders..."
-      $USE_SUDO rm -rf "$LOG_DIR"
-      $USE_SUDO rm -rf "$CONFIG_DIR"
-      $USE_SUDO $CONTAINER_RUNTIME rm -f $LDAP_REGISTER_CONTAINER_NAME > /dev/null 2>&1
-      echo "Recreating configuration and folders..."
-      $USE_SUDO mkdir -p "$LOG_DIR"
-      $USE_SUDO mkdir -p "$CONFIG_DIR"
-    else
-      echo "Skipping configuration."
-      return 0
-    fi
-  else
-    echo "Creating configuration and folders..."
+function setup_directories() {
+  if ! [[ -d "$LOG_DIR" ]]; then
     $USE_SUDO mkdir -p "$LOG_DIR"
+  fi
+  if ! [[ -d "$CONFIG_DIR" ]]; then
     $USE_SUDO mkdir -p "$CONFIG_DIR"
   fi
+}
 
+function service_configure_ldap() {
   # Configure the service
   echo "Configuring the $LDAP_REGISTER_CMD service..."
-
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name $LDAP_REGISTER_CONTAINER_NAME \
+  $USE_SUDO $CONTAINER_RUNTIME rm -f $LDAP_REGISTER_CONTAINER_NAME > /dev/null 2>&1
+  $USE_SUDO $CONTAINER_RUNTIME run -it --rm --name $LDAP_REGISTER_CONTAINER_NAME \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
@@ -190,29 +177,10 @@ function service_configure_ldap() {
 }
 
 function service_configure_sql() {
-  if [[ -d "$LOG_DIR_SQL" ]] || [[ -d "$CONFIG_DIR_SQL" ]]; then
-    read -p "The configuration and/or folders already exist. Do you want to delete the files and reconfigure? (Y/N) " delete_confirmation < /dev/tty
-    if [[ $delete_confirmation =~ ^[Yy]$ ]]; then
-      echo "Deleting existing configuration and folders..."
-      $USE_SUDO rm -rf "$LOG_DIR_SQL"
-      $USE_SUDO rm -rf "$CONFIG_DIR_SQL"
-      echo "Recreating configuration and folders..."
-      $USE_SUDO mkdir -p "$LOG_DIR_SQL"
-      $USE_SUDO mkdir -p "$CONFIG_DIR_SQL"
-    else
-      echo "Skipping configuration."
-      return 0
-    fi
-  else
-    echo "Creating configuration and folders..."
-    $USE_SUDO mkdir -p "$LOG_DIR_SQL"
-    $USE_SUDO mkdir -p "$CONFIG_DIR_SQL"
-  fi
-
   # Configure the service
   echo "Configuring the $SQL_REGISTER_CMD service..."
   $USE_SUDO $CONTAINER_RUNTIME rm -f $SQL_REGISTER_CONTAINER_NAME >  /dev/null 2>&1
-  $USE_SUDO $CONTAINER_RUNTIME run -it --name $SQL_REGISTER_CONTAINER_NAME \
+  $USE_SUDO $CONTAINER_RUNTIME run -it --rm --name $SQL_REGISTER_CONTAINER_NAME \
     -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
     -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
     -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
@@ -231,7 +199,7 @@ function service_cbt_run() {
       fi
     else
       echo "$AGENT_CONTAINER_NAME container not found. Starting"
-      $USE_SUDO $CONTAINER_RUNTIME run -it --name $AGENT_CONTAINER_NAME \
+      $USE_SUDO $CONTAINER_RUNTIME run -d --name $AGENT_CONTAINER_NAME \
         -e LOG_DIR="$LOG_DIR" -e CONFIG_DIR="$CONFIG_DIR" \
         -v "$LOG_DIR:/var/log/cbt-ldap-agent" \
         -v "$CONFIG_DIR:/etc/cbt-ldap-agent" \
@@ -304,10 +272,12 @@ function menu() {
         ;;
       2)
         clear
+        setup_directories
         service_configure_ldap
         ;;
       3)
         clear
+        setup_directories
         service_configure_sql
         ;;
       4)
