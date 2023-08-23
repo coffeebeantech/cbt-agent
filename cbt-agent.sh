@@ -17,8 +17,8 @@ fi
 #ECR
 REGISTRY="cbt"
 REGISTRY_ALIAS_NAME="public.ecr.aws/cbt"
-REPOSITORY_NAME="ldap-agent"
-IMAGE_NAME="ldap-agent"
+REPOSITORY_NAME="cbt-agent"
+IMAGE_NAME="cbt-agent"
 AGENT_CONTAINER_NAME="cbt-agent"
 AGENT_CMD="ldap-agent"
 LDAP_REGISTER_CONTAINER_NAME="ldap-register"
